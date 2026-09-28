@@ -1,0 +1,473 @@
+{
+  "name": "arXiv cs.AI RSS → Turkish Summary → Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "93d3978e-867f-4488-b0ee-e1c1753d2ca5",
+      "name": "Every Weekday 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://hnrss.org/frontpage",
+        "options": {}
+      },
+      "id": "75e1fab2-57e6-4f3f-97f7-07d2f89d579b",
+      "name": "Read RSS Feed",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "b2a47779-6838-47ee-9aaf-ef28b73a5772",
+      "name": "Limit To Latest",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Aşağıdaki bilimsel makale açıklamasını değerlendir.\n\n1) Makalenin yeniliğini (novelty) ve alaka düzeyini (relevance) birlikte değerlendirerek 1 ile 10 arasında tek bir tam sayı puan ver.\n2) Açıklamayı Türkçe olarak tam 3 kısa madde halinde özetle. Her madde \"- \" ile başlasın.\n\nAçıklama:\n{{ $json.contentSnippet || $json.content }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 500,
+          "textFormat": {
+            "textOptions": {
+              "type": "json_schema",
+              "name": "paper_evaluation",
+              "schema": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"score\",\"summary\"],\"properties\":{\"score\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":10,\"description\":\"Yenilik ve alaka düzeyi için 1-10 arası tam sayı puan\"},\"summary\":{\"type\":\"string\",\"description\":\"Türkçe 3 maddelik özet, her madde \\\"- \\\" ile başlar ve satır sonuyla ayrılır\"}}}",
+              "strict": true
+            }
+          }
+        }
+      },
+      "id": "6e3341bc-70c0-41c0-ad58-3f0e772850f6",
+      "name": "Summarize In Turkish",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "score-threshold",
+              "leftValue": "={{ $json.output[0].content[0].text.score }}",
+              "rightValue": 7,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "27b58c68-8377-4427-916f-f2069012cd4b",
+      "name": "Score 7 Or Higher",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "input": "={{ $json.output[0].content[0].text.summary }}",
+        "voice": "nova",
+        "options": {
+          "response_format": "mp3",
+          "binaryPropertyOutput": "data"
+        }
+      },
+      "id": "24270d58-e660-4ea9-960a-35eb9ca2a59d",
+      "name": "Generate Speech",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        1120,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendAudio",
+        "chatId": "8522497206",
+        "binaryData": true,
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "📄 ArXiv Makalesini Aç",
+                    "additionalFields": {
+                      "url": "={{ $(\"Read RSS Feed\").item.json.link }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "caption": "=⭐ Skor: {{ $(\"Summarize In Turkish\").item.json.output[0].content[0].text.score }}/10\n\n<b>{{ $(\"Read RSS Feed\").item.json.title.replaceAll(\"&\",\"&amp;\").replaceAll(\"<\",\"&lt;\").replaceAll(\">\",\"&gt;\") }}</b>\n\n{{ $(\"Summarize In Turkish\").item.json.output[0].content[0].text.summary.replaceAll(\"&\",\"&amp;\").replaceAll(\"<\",\"&lt;\").replaceAll(\">\",\"&gt;\") }}\n\n{{ $(\"Read RSS Feed\").item.json.link.replaceAll(\"&\",\"&amp;\").replaceAll(\"<\",\"&lt;\").replaceAll(\">\",\"&gt;\") }}",
+          "fileName": "ozet.mp3",
+          "parse_mode": "HTML",
+          "performer": "ArXiv Araştırma Ajanı",
+          "title": "={{ $(\"Read RSS Feed\").item.json.title }}"
+        }
+      },
+      "id": "8a59c13e-3318-4233-8889-769c7617e986",
+      "name": "Send Telegram Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        0
+      ],
+      "webhookId": "61181bac-3759-438f-be72-114cd141b49d",
+      "credentials": {
+        "telegramApi": {
+          "id": "9x0lhYn2uQo9qMaN",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f-date",
+              "name": "Date",
+              "value": "={{ $now.setZone(\"Europe/Istanbul\").toFormat(\"yyyy-MM-dd HH:mm\") }}",
+              "type": "string"
+            },
+            {
+              "id": "f-title",
+              "name": "Article Title",
+              "value": "={{ $(\"Read RSS Feed\").item.json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "f-score",
+              "name": "AI Score",
+              "value": "={{ $(\"Summarize In Turkish\").item.json.output[0].content[0].text.score }}",
+              "type": "number"
+            },
+            {
+              "id": "f-summary",
+              "name": "Turkish Summary",
+              "value": "={{ $(\"Summarize In Turkish\").item.json.output[0].content[0].text.summary }}",
+              "type": "string"
+            },
+            {
+              "id": "f-url",
+              "name": "ArXiv URL",
+              "value": "={{ $(\"Read RSS Feed\").item.json.link }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a334896d-d079-4136-a326-2210497f4fb6",
+      "name": "Prepare Sheet Row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1568,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "184KJVy7h3oiEkLr67uXjNqda66oaR-47SYv7zyKD7Kc",
+          "mode": "list",
+          "cachedResultName": "ArXiv AI Araştırma Kütüphanesi",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/184KJVy7h3oiEkLr67uXjNqda66oaR-47SYv7zyKD7Kc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sayfa1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/184KJVy7h3oiEkLr67uXjNqda66oaR-47SYv7zyKD7Kc/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.Date }}",
+            "Article Title": "={{ $json['Article Title'] }}",
+            "AI Score": "={{ $json['AI Score'] }}",
+            "Turkish Summary": "={{ $json['Turkish Summary'] }}",
+            "ArXiv URL": "={{ $json['ArXiv URL'] }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Article Title",
+              "displayName": "Article Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "AI Score",
+              "displayName": "AI Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Turkish Summary",
+              "displayName": "Turkish Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ArXiv URL",
+              "displayName": "ArXiv URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "91395bf1-635d-464a-bc1b-2838994d6f20",
+      "name": "Log To Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1568,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "KedXQLaPwJ6E20Wu",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every Weekday 09:00": {
+      "main": [
+        [
+          {
+            "node": "Read RSS Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read RSS Feed": {
+      "main": [
+        [
+          {
+            "node": "Limit To Latest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit To Latest": {
+      "main": [
+        [
+          {
+            "node": "Summarize In Turkish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize In Turkish": {
+      "main": [
+        [
+          {
+            "node": "Score 7 Or Higher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score 7 Or Higher": {
+      "main": [
+        [
+          {
+            "node": "Generate Speech",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Speech": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Telegram Message": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sheet Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sheet Row": {
+      "main": [
+        [
+          {
+            "node": "Log To Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "fe60961b-efeb-4bfc-bb4a-6d53c8c70a20",
+  "meta": {
+    "instanceId": "bf8048f1d834a3438d5eede6ddbb6c392f8b60b60fd97b6f2a7546ddce88d49c"
+  },
+  "nodeGroups": [
+    {
+      "id": "06165eb5-7d4b-41af-a8c1-e4edb7730704",
+      "name": "Fetch latest paper",
+      "nodeIds": [
+        "75e1fab2-57e6-4f3f-97f7-07d2f89d579b",
+        "b2a47779-6838-47ee-9aaf-ef28b73a5772"
+      ],
+      "description": "Polls the arXiv cs.AI feed every weekday morning and keeps only the most recent article"
+    },
+    {
+      "id": "cf94bbe9-6848-4428-8c4f-5bca8c52445f",
+      "name": "Score & summarize",
+      "nodeIds": [
+        "6e3341bc-70c0-41c0-ad58-3f0e772850f6",
+        "27b58c68-8377-4427-916f-f2069012cd4b"
+      ],
+      "description": "Rates the paper 1-10 for novelty and relevance, writes a 3-bullet Turkish summary, and drops anything below 7"
+    },
+    {
+      "id": "033116de-57cc-4d94-9f48-0ef2608cf5d3",
+      "name": "Deliver & log",
+      "nodeIds": [
+        "24270d58-e660-4ea9-960a-35eb9ca2a59d",
+        "8a59c13e-3318-4233-8889-769c7617e986",
+        "a334896d-d079-4136-a326-2210497f4fb6",
+        "91395bf1-635d-464a-bc1b-2838994d6f20"
+      ],
+      "description": "Voices the summary, sends it to Telegram as audio with a caption and link button, then records the entry in Google Sheets"
+    }
+  ],
+  "id": "1yxQFuXfbccGaOpO",
+  "tags": []
+}
